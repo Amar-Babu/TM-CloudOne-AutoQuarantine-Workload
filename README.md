@@ -1,7 +1,7 @@
 # TM-CloudOne-AutoQuarantine-Workload
 
 ##  Overview  
-Enabling automaterd quarantine of malware infected workloads is a critical capability that safeguards workloads without the need of manual intervention.
+Enabling automated quarantine of malware infected workloads is a critical capability that safeguards workloads without the need of manual intervention.
 
 ![image](https://user-images.githubusercontent.com/22888429/124211767-8bcda780-daa2-11eb-8d3a-fe6158a4ecce.png)
 
