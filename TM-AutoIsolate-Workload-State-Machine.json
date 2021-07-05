@@ -1,0 +1,117 @@
+{
+    "Comment": "Step Function to Auto Quarantine workloads and release after a delay interval",
+    "StartAt": "TM-Workload-Impose-Quarantine-State",
+    "States": {
+      "TM-Workload-Impose-Quarantine-State": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "Parameters": {
+          "Payload.$": "$",
+          "FunctionName": "arn:aws:lambda:us-east-1:XXXXXXXXXX:function:TM-Workload-Impose-Quarantine-Lambda:$LATEST"
+        },
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "Lambda.ServiceException",
+              "Lambda.AWSLambdaException",
+              "Lambda.SdkClientException"
+            ],
+            "IntervalSeconds": 2,
+            "MaxAttempts": 6,
+            "BackoffRate": 2
+          }
+        ],
+        "ResultPath": "$.IsolateLambdaResult",
+        "Next": "TM-Workload-Impose-Quarantine-SNS-State"
+      },
+      "Check-Lambda-Status-Code": {
+        "Type": "Choice",
+        "Choices": [
+          {
+            "And": [
+              {
+                "Variable": "$.IsolateLambdaResult.Payload.statusCode",
+                "NumericEquals": 200
+              },
+              {
+                "Not": {
+                  "Variable": "$.AUTO_RELEASE_QUARANTINE_BINARY_FLAG",
+                  "NumericEquals": 0
+                }
+              }
+            ],
+            "Next": "Delay"
+          }
+        ],
+        "Default": "Pass"
+      },
+      "TM-Workload-Impose-Quarantine-SNS-State": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "TopicArn": "arn:aws:sns:us-east-1:XXXXXXXXXX:TM-Workload-Impose-Quarantine-Notification-SNS",
+          "Message": {
+            "status": "Quarantine",
+            "lambda_response_code.$": "$.IsolateLambdaResult.Payload.statusCode",
+            "auto_release_quarantine.$": "$.AUTO_RELEASE_QUARANTINE_BINARY_FLAG",
+            "workload_id.$": "$.HOST_ID",
+            "quantine_period_seconds.$": "$.QUARANTINE_PERIOD_IN_SECS",
+            "workload_name.$": "$.IsolateLambdaResult.Payload.body.computer_display_name",
+            "display_name.$": "$.IsolateLambdaResult.Payload.body.computer_host_name",
+            "platform.$": "$.IsolateLambdaResult.Payload.body.computer_platform"
+          }
+        },
+        "Next": "Check-Lambda-Status-Code",
+        "ResultPath": "$.IsolateSNSResult"
+      },
+      "Delay": {
+        "Type": "Wait",
+        "Next": "TM-Workload-Release-Quarantine-State",
+        "SecondsPath": "$.QUARANTINE_PERIOD_IN_SECS"
+      },
+      "TM-Workload-Release-Quarantine-State": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "Parameters": {
+          "Payload.$": "$",
+          "FunctionName": "arn:aws:lambda:us-east-1:XXXXXXXXXX:function:TM-Workload-Release-Quarantine-Lambda:$LATEST"
+        },
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "Lambda.ServiceException",
+              "Lambda.AWSLambdaException",
+              "Lambda.SdkClientException"
+            ],
+            "IntervalSeconds": 2,
+            "MaxAttempts": 6,
+            "BackoffRate": 2
+          }
+        ],
+        "ResultPath": "$.ReleaseLambdaResult",
+        "Next": "TM-Workload-Release-Quarantine-SNS-State"
+      },
+      "TM-Workload-Release-Quarantine-SNS-State": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "Message": {
+            "status": "Released",
+            "lambda_response_code.$": "$.ReleaseLambdaResult.Payload.statusCode",
+            "workload_id.$": "$.HOST_ID",
+            "quantine_period_seconds.$": "$.QUARANTINE_PERIOD_IN_SECS",
+            "workload_name.$": "$.IsolateLambdaResult.Payload.body.computer_display_name",
+            "display_name.$": "$.IsolateLambdaResult.Payload.body.computer_host_name",
+            "platform.$": "$.IsolateLambdaResult.Payload.body.computer_platform"
+          },
+          "TopicArn": "arn:aws:sns:us-east-1:XXXXXXXXXX:TM-Workload-Release-Quarantine-Notification-SNS"
+        },
+        "ResultPath": "$.ReleaseSNSResult",
+        "Next": "Pass"
+      },
+      "Pass": {
+        "Type": "Pass",
+        "End": true
+      }
+    }
+  }
