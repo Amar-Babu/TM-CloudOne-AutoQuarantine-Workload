@@ -85,8 +85,16 @@ def getPreviousEpochTime(timeBufferInMins):
     previousEpochTimeInMillisecs = int((time.time() - 60*timeBufferInMins)*1000)
     return previousEpochTimeInMillisecs
 
+def getValidComputerID(ComputersApi):
+    expand_options = deepsecurity.Expand()
+    expand_options.add(expand_options.none)
+    expand = expand_options.list()
+    overrides = False
+    api_response = ComputersApi.search_computers(api_version, search_filter=deepsecurity.SearchFilter(), expand=expand, overrides=overrides)
+    return api_response.computers[-1].id
+
 # Get the scheduledTask ID, create if not already found in the system
-def getFirstScheduledTaskWithNameValue(string_value,ScheduledTasksApi):
+def getFirstScheduledTaskWithNameValue(string_value,ScheduledTasksApi,ComputersApi):
     scheduledTaskSearch = deepsecurity.SearchCriteria(field_name = 'name',string_value = string_value)
     search_criteria_list = [scheduledTaskSearch]
     search_filter = deepsecurity.SearchFilter(search_criteria = search_criteria_list)
@@ -95,7 +103,7 @@ def getFirstScheduledTaskWithNameValue(string_value,ScheduledTasksApi):
         return st_query_resultList[0]
     elif 'Custom-ScheduledTask-SendPolicy-Now-' in string_value:
         print('Scheduled task '+ string_value + ' not found, creating a new task')
-        computerFilter = deepsecurity.ComputerFilter(type='computer',computer_id = getValidComputerID())
+        computerFilter = deepsecurity.ComputerFilter(type='computer',computer_id = getValidComputerID(ComputersApi))
         sendPolicyTaskParameters = deepsecurity.SendPolicyTaskParameters(computer_filter = computerFilter)
         onceOnlyScheduleParameters = deepsecurity.OnceOnlyScheduleParameters(start_time=getPreviousEpochTime(10))
         scheduleDetails = deepsecurity.ScheduleDetails(recurrence_type= 'none', time_zone = 'US/Eastern',once_only_schedule_parameters = onceOnlyScheduleParameters)
@@ -104,9 +112,9 @@ def getFirstScheduledTaskWithNameValue(string_value,ScheduledTasksApi):
         return api_response
     return 0
 
-def pushPolicyToComputer(computer_id,ScheduledTasksApi):
+def pushPolicyToComputer(computer_id,ScheduledTasksApi,ComputersApi):
     refreshPolicySchedTaskName= 'Custom-ScheduledTask-SendPolicy-Now-' + str(computer_id)
-    refreshPolicySchedTask = getFirstScheduledTaskWithNameValue(refreshPolicySchedTaskName,ScheduledTasksApi)
+    refreshPolicySchedTask = getFirstScheduledTaskWithNameValue(refreshPolicySchedTaskName,ScheduledTasksApi,ComputersApi)
     refreshPolicySchedTask._enabled = True
     refreshPolicySchedTask._run_now = True
     refreshPolicySchedTask._send_policy_task_parameters._computer_filter._computer_id = computer_id
@@ -189,7 +197,7 @@ def lambda_handler(event, context):
         computer = deepsecurity.Computer(firewall=firewall_isolation_config)
         api_response = ComputersApi.modify_computer(host_id, computer, api_version, expand=expand, overrides=overrides)
         #pprint(api_response)
-        pushPolicyToComputer(host_id,ScheduledTasksApi)
+        pushPolicyToComputer(host_id,ScheduledTasksApi,ComputersApi)
         print(" Isolation Firewall rules pushed to ", host_id)
         passInfoToInputStream = {
             'original_firewall_config': original_firewall_config.to_dict(),
